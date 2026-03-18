@@ -18,12 +18,11 @@ class NowPlayingService: ObservableObject {
 
     private var timer: Timer?
 
-    // MediaRemote function types
-    // The callback MUST be @convention(block) — MediaRemote expects an ObjC block,
-    // not a C function pointer. Using the wrong convention causes the dictionary
-    // bridging to silently fail (empty dict).
+    // The C function takes a dispatch queue and an ObjC block.
+    // We declare the block parameter as AnyObject so we can pass a
+    // heap-allocated @convention(block) closure that is free to escape.
     private typealias MRMediaRemoteGetNowPlayingInfoFunction = @convention(c) (
-        DispatchQueue, @convention(block) ([String: Any]) -> Void
+        DispatchQueue, AnyObject
     ) -> Void
     private typealias MRMediaRemoteRegisterForNowPlayingNotificationsFunction = @convention(c) (
         DispatchQueue
@@ -91,10 +90,10 @@ class NowPlayingService: ObservableObject {
             return
         }
 
-        getNowPlayingInfo(DispatchQueue.main) { [weak self] info in
+        // Create an ObjC block explicitly — it's heap-allocated and safe to escape.
+        let callback: @convention(block) ([String: Any]) -> Void = { [weak self] info in
             guard let self else { return }
 
-            // Debug: show what we got
             if info.isEmpty {
                 print("[Tabr] poll: empty dictionary (no now-playing data)")
             } else {
@@ -106,13 +105,14 @@ class NowPlayingService: ObservableObject {
 
             if let title, !title.isEmpty {
                 print("[Tabr] → title=\"\(title)\" artist=\"\(artist ?? "(nil)")\"")
-                let effectiveArtist = artist ?? ""
-                let newInfo = NowPlayingInfo(title: title, artist: effectiveArtist)
+                let newInfo = NowPlayingInfo(title: title, artist: artist ?? "")
                 if self.nowPlaying != newInfo {
                     self.nowPlaying = newInfo
                 }
             }
         }
+
+        getNowPlayingInfo(DispatchQueue.main, callback as AnyObject)
     }
 
     deinit {
