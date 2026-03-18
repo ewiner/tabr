@@ -9,6 +9,9 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if nowPlayingService.setupNeeded {
+                setupBanner
+            }
             nowPlayingBar
             Divider()
 
@@ -31,6 +34,32 @@ struct ContentView: View {
                 tabService.search(query: info.searchQuery)
             }
         }
+    }
+
+    // MARK: - Setup Banner
+
+    private var setupBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.yellow)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Install media-control for YouTube Music support")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                Text("brew tap ungive/media-control && brew install media-control")
+                    .font(.caption2)
+                    .monospaced()
+                    .textSelection(.enabled)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Dismiss") {
+                nowPlayingService.setupNeeded = false
+            }
+            .controlSize(.small)
+        }
+        .padding(10)
+        .background(.yellow.opacity(0.1))
     }
 
     // MARK: - Now Playing Bar
