@@ -37,50 +37,16 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if showingSearch {
-                searchField
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                Color.divider.frame(height: 1)
-            }
+            topBar
+            Color.divider.frame(height: 1)
             contentArea
         }
         .frame(minWidth: 460, minHeight: 400)
         .background(Color.bgPrimary)
         .preferredColorScheme(.dark)
         .toolbar {
-            ToolbarItem(placement: .navigation) {
-                HStack(spacing: 12) {
-                    tabrLogo
-                    songInfoSection
-                }
-            }
-
-            ToolbarItemGroup(placement: .primaryAction) {
-                if !tabService.results.isEmpty {
-                    Button {
-                        showingResults.toggle()
-                    } label: {
-                        Image(systemName: showingResults ? "music.note.list" : "list.bullet")
-                    }
-                    .help(showingResults ? "Back to tab" : "Other tabs")
-                }
-
-                ControlGroup {
-                    Toggle(isOn: $autoFetch) {
-                        Text("AUTO")
-                    }
-
-                    Button {
-                        showingSearch.toggle()
-                        if showingSearch {
-                            searchFieldFocused = true
-                        }
-                    } label: {
-                        Image(systemName: "magnifyingglass")
-                    }
-                    .help("Search")
-                }
+            ToolbarItem(placement: .principal) {
+                tabrLogo
             }
         }
         .onAppear {
@@ -100,7 +66,7 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - TABR Logo
+    // MARK: - TABR Logo (in window title bar)
 
     private var tabrLogo: some View {
         Text("T A B R")
@@ -115,6 +81,28 @@ struct ContentView: View {
             )
     }
 
+    // MARK: - Top Bar (in content area, below title bar)
+
+    private var topBar: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 14) {
+                songInfoSection
+
+                Spacer()
+
+                headerActionButtons
+            }
+            .padding(.top, 8)
+
+            if showingSearch {
+                searchField
+                    .padding(.top, 8)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
+    }
+
     // MARK: - Song Info
 
     @ViewBuilder
@@ -123,13 +111,13 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 8) {
                     Text(tab.title)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(Color.textPrimary)
                         .lineLimit(1)
                     typeBadge(tab.type)
                 }
                 Text(tab.artist)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color.textSecondary)
                     .lineLimit(1)
             }
@@ -139,30 +127,63 @@ struct ContentView: View {
                     .controlSize(.small)
                     .tint(Color.accent)
                 Text("Loading...")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.textSecondary)
             }
         } else if let info = nowPlayingService.nowPlaying {
             VStack(alignment: .leading, spacing: 2) {
                 Text(info.title)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(Color.textPrimary)
                     .lineLimit(1)
                 Text(info.artist)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color.textSecondary)
                     .lineLimit(1)
             }
         } else {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Image(systemName: "music.note")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Color.textTertiary)
                 Text("No song playing")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.textTertiary)
             }
         }
+    }
+
+    // MARK: - Header Action Buttons
+
+    private var headerActionButtons: some View {
+        HStack(spacing: 6) {
+            if !tabService.results.isEmpty {
+                Button {
+                    showingResults.toggle()
+                } label: {
+                    Image(systemName: showingResults ? "music.note.list" : "list.bullet")
+                }
+                .help(showingResults ? "Back to tab" : "Other tabs")
+            }
+
+            Toggle(isOn: $autoFetch) {
+                Text("Auto")
+            }
+            .toggleStyle(.button)
+            .tint(Color.accent)
+            .help(autoFetch ? "Auto-sync ON" : "Auto-sync OFF")
+
+            Button {
+                showingSearch.toggle()
+                if showingSearch {
+                    searchFieldFocused = true
+                }
+            } label: {
+                Image(systemName: "magnifyingglass")
+            }
+            .help("Search")
+        }
+        .controlSize(.regular)
     }
 
     // MARK: - Search Field
@@ -295,15 +316,14 @@ struct ContentView: View {
                     }
                     .help("Larger text")
                 }
-                .controlSize(.small)
 
                 Toggle(isOn: $wordWrap) {
-                    Image(systemName: "text.justify.leading")
+                    Label("Wrap", systemImage: "text.justify.leading")
                 }
                 .toggleStyle(.button)
-                .controlSize(.small)
                 .help(wordWrap ? "Wrap: ON" : "Wrap: OFF")
             }
+            .controlSize(.regular)
         }
     }
 
