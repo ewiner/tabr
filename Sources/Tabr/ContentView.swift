@@ -390,13 +390,14 @@ struct ContentView: View {
 
                 Spacer()
 
-                Text("\(tabService.results.count)")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Color.accent)
-                +
-                Text(" found")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.textTertiary)
+                HStack(spacing: 0) {
+                    Text("\(tabService.results.count)")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color.accent)
+                    Text(" found")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.textTertiary)
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)

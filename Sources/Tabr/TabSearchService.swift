@@ -23,6 +23,7 @@ struct TabContent: Equatable {
     let content: String // The actual tab/chord text
 }
 
+@MainActor
 class TabSearchService: ObservableObject {
     @Published var results: [TabResult] = []
     @Published var selectedTab: TabContent?
@@ -47,7 +48,7 @@ class TabSearchService: ObservableObject {
         searchTitle = title
 
         currentTask?.cancel()
-        currentTask = Task { @MainActor in
+        currentTask = Task {
             self.isSearching = true
             self.errorMessage = nil
             self.results = []
@@ -73,8 +74,7 @@ class TabSearchService: ObservableObject {
 
     /// Load the full tab content from a result
     func loadTab(_ result: TabResult) {
-        let previousTask = currentTask
-        currentTask = Task { @MainActor in
+        currentTask = Task {
             self.isLoadingTab = true
             self.errorMessage = nil
 
