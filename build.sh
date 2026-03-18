@@ -1,6 +1,5 @@
 #!/bin/bash
 # Builds Tabr as a proper .app bundle and ad-hoc signs it.
-# MediaRemote requires a signed app bundle — a bare swift run binary is denied.
 
 set -e
 
@@ -20,7 +19,7 @@ mkdir -p "$APP_BUNDLE/Contents/Resources"
 cp "$BINARY" "$APP_BUNDLE/Contents/MacOS/$BINARY_NAME"
 cp "$SCRIPT_DIR/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
 
-echo "→ Ad-hoc signing with entitlements..."
+echo "→ Ad-hoc signing..."
 codesign --force --deep --sign - \
     --entitlements "$SCRIPT_DIR/Tabr.entitlements" \
     "$APP_BUNDLE"

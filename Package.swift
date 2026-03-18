@@ -7,10 +7,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "Tabr",
-            path: "Sources/Tabr",
-            linkerSettings: [
-                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "/System/Library/PrivateFrameworks"])
-            ]
+            path: "Sources/Tabr"
         )
     ]
 )
