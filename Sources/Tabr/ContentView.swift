@@ -59,6 +59,13 @@ struct ContentView: View {
                 tabService.search(query: info.searchQuery, artist: info.artist, title: info.title, autoSelect: true)
             }
         }
+        .onChange(of: autoFetch) { _, isOn in
+            if isOn, let info = nowPlayingService.nowPlaying {
+                showingResults = false
+                showingSearch = false
+                tabService.search(query: info.searchQuery, artist: info.artist, title: info.title, autoSelect: true)
+            }
+        }
         .onChange(of: tabService.selectedTab) { _, newValue in
             if newValue != nil && !showingResults {
                 showingSearch = false
