@@ -21,6 +21,9 @@ struct TabContent: Equatable {
     let artist: String
     let type: String
     let content: String // The actual tab/chord text
+    let url: URL
+    let tuning: String?
+    let capo: Int?
 }
 
 @MainActor
@@ -288,24 +291,27 @@ class TabSearchService: ObservableObject {
         let (data, _) = try await URLSession.shared.data(for: request)
         let html = String(data: data, encoding: .utf8) ?? ""
 
-        let tabText = extractTabContent(from: html)
+        let (tabText, tuning, capo) = extractTabContent(from: html)
 
         return TabContent(
             title: result.title,
             artist: result.artist,
             type: result.type,
-            content: tabText
+            content: tabText,
+            url: result.url,
+            tuning: tuning,
+            capo: capo
         )
     }
 
-    private func extractTabContent(from html: String) -> String {
+    private func extractTabContent(from html: String) -> (content: String, tuning: String?, capo: Int?) {
         guard let storeRange = html.range(of: "data-content=\"") else {
-            return extractTabContentFallback(from: html)
+            return (extractTabContentFallback(from: html), nil, nil)
         }
 
         let afterStore = html[storeRange.upperBound...]
         guard let endQuote = afterStore.firstIndex(of: "\"") else {
-            return extractTabContentFallback(from: html)
+            return (extractTabContentFallback(from: html), nil, nil)
         }
 
         let encoded = String(afterStore[..<endQuote])
@@ -316,21 +322,46 @@ class TabSearchService: ObservableObject {
               let store = json["store"] as? [String: Any],
               let page = store["page"] as? [String: Any],
               let data = page["data"] as? [String: Any] else {
-            return extractTabContentFallback(from: html)
+            return (extractTabContentFallback(from: html), nil, nil)
+        }
+
+        // Extract tuning and capo metadata
+        var tuning: String? = nil
+        var capo: Int? = nil
+
+        if let tabView = data["tab_view"] as? [String: Any],
+           let meta = tabView["meta"] as? [String: Any] {
+            if let tuningObj = meta["tuning"] as? [String: Any] {
+                tuning = tuningObj["value"] as? String ?? tuningObj["name"] as? String
+            }
+            capo = meta["capo"] as? Int
+        }
+
+        if let tabData = data["tab"] as? [String: Any] {
+            if tuning == nil {
+                if let tuningObj = tabData["tuning"] as? [String: Any] {
+                    tuning = tuningObj["value"] as? String ?? tuningObj["name"] as? String
+                } else if let tuningStr = tabData["tuning"] as? String {
+                    tuning = tuningStr
+                }
+            }
+            if capo == nil {
+                capo = tabData["capo"] as? Int
+            }
         }
 
         if let tabView = data["tab_view"] as? [String: Any],
            let wikiTab = tabView["wiki_tab"] as? [String: Any],
            let content = wikiTab["content"] as? String {
-            return cleanTabContent(content)
+            return (cleanTabContent(content), tuning, capo)
         }
 
         if let tab = data["tab"] as? [String: Any],
            let content = tab["content"] as? String {
-            return cleanTabContent(content)
+            return (cleanTabContent(content), tuning, capo)
         }
 
-        return extractTabContentFallback(from: html)
+        return (extractTabContentFallback(from: html), tuning, capo)
     }
 
     private func extractTabContentFallback(from html: String) -> String {
