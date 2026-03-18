@@ -30,6 +30,7 @@ struct ContentView: View {
     @State private var showingResults = false
     @State private var showingSearch = false
     @State private var searchText = ""
+    @State private var contentHovered = false
     @FocusState private var searchFieldFocused: Bool
 
     private let fontSizeRange: ClosedRange<CGFloat> = 10...24
@@ -53,7 +54,6 @@ struct ContentView: View {
                 tabService.search(query: info.searchQuery, artist: info.artist, title: info.title, autoSelect: true)
             }
         }
-        // When auto-select loads a tab, switch back to tab view
         .onChange(of: tabService.selectedTab) { _, newValue in
             if newValue != nil && !showingResults {
                 showingSearch = false
@@ -65,19 +65,17 @@ struct ContentView: View {
 
     private var topBar: some View {
         VStack(spacing: 0) {
-            // TABR logo — always centered at the very top
-            tabrLogo
-                .padding(.top, 12)
-                .padding(.bottom, 8)
+            // Single row: TABR logo + song info + action buttons
+            HStack(alignment: .center, spacing: 14) {
+                tabrLogo
 
-            // Song info + action buttons
-            if tabService.selectedTab != nil || tabService.isLoadingTab {
-                selectedTabHeader
-            } else if let info = nowPlayingService.nowPlaying {
-                nowPlayingHeader(info)
-            } else {
-                noSongHeader
+                songInfoSection
+
+                Spacer()
+
+                headerActionButtons
             }
+            .padding(.top, 8)
 
             // Inline search field (shown when search is toggled)
             if showingSearch {
@@ -87,7 +85,8 @@ struct ContentView: View {
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 12)
-        .background(Color.bgSecondary)
+        .glassEffect(.regular.tint(Color.bgSecondary.opacity(0.5)),
+                      in: UnevenRoundedRectangle(cornerRadii: .init(bottomLeading: 0, bottomTrailing: 0)))
     }
 
     private var tabrLogo: some View {
@@ -103,166 +102,116 @@ struct ContentView: View {
             )
     }
 
-    private func nowPlayingHeader(_ info: NowPlayingInfo) -> some View {
-        HStack(spacing: 10) {
-            // Song info — tap to toggle auto
+    // MARK: - Song Info (plain text, no tap action)
+
+    @ViewBuilder
+    private var songInfoSection: some View {
+        if let tab = tabService.selectedTab {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 8) {
+                    Text(tab.title)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Color.textPrimary)
+                        .lineLimit(1)
+                    typeBadge(tab.type)
+                }
+                Text(tab.artist)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.textSecondary)
+                    .lineLimit(1)
+            }
+        } else if tabService.isLoadingTab {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(Color.accent)
+                Text("Loading...")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.textSecondary)
+            }
+        } else if let info = nowPlayingService.nowPlaying {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(info.title)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Color.textPrimary)
+                    .lineLimit(1)
+                Text(info.artist)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.textSecondary)
+                    .lineLimit(1)
+            }
+        } else {
+            HStack(spacing: 8) {
+                Image(systemName: "music.note")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.textTertiary)
+                Text("No song playing")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.textTertiary)
+            }
+        }
+    }
+
+    // MARK: - Header Action Buttons
+
+    private var headerActionButtons: some View {
+        HStack(spacing: 8) {
+            // Other Tabs button
+            if !tabService.results.isEmpty {
+                Button {
+                    showingResults.toggle()
+                } label: {
+                    Image(systemName: showingResults ? "music.note.list" : "list.bullet")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(showingResults ? Color.accent : Color.textTertiary)
+                        .frame(width: 30, height: 28)
+                }
+                .buttonStyle(.plain)
+                .glassEffect(in: RoundedRectangle(cornerRadius: 8))
+                .help(showingResults ? "Back to tab" : "Other tabs")
+            }
+
+            // AUTO + Search connected group
+            autoSearchGroup
+        }
+    }
+
+    private var autoSearchGroup: some View {
+        HStack(spacing: 0) {
+            // AUTO toggle
             Button {
                 autoFetch.toggle()
             } label: {
-                HStack(spacing: 10) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(info.title)
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(Color.textPrimary)
-                            .lineLimit(1)
-                        HStack(spacing: 6) {
-                            Text(info.artist)
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(Color.textSecondary)
-                            if autoFetch {
-                                autoIndicator
-                            }
-                        }
-                    }
-                }
+                Text("AUTO")
+                    .font(.system(size: 9, weight: .heavy))
+                    .tracking(0.5)
+                    .foregroundStyle(autoFetch ? Color.accent : Color.textTertiary)
+                    .frame(height: 28)
+                    .padding(.horizontal, 10)
             }
             .buttonStyle(.plain)
-            .help(autoFetch ? "Auto-sync ON — click to disable" : "Auto-sync OFF — click to enable")
+            .help(autoFetch ? "Auto-sync ON" : "Auto-sync OFF")
 
-            Spacer()
-            actionButtons
-        }
-    }
+            Divider()
+                .frame(height: 14)
+                .opacity(0.3)
 
-    private var selectedTabHeader: some View {
-        HStack(spacing: 10) {
-            if let tab = tabService.selectedTab {
-                // Song info — tap to toggle auto
-                Button {
-                    autoFetch.toggle()
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 8) {
-                            Text(tab.title)
-                                .font(.system(size: 15, weight: .bold))
-                                .foregroundStyle(Color.textPrimary)
-                                .lineLimit(1)
-                            typeBadge(tab.type)
-                        }
-                        HStack(spacing: 6) {
-                            Text(tab.artist)
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(Color.textSecondary)
-                            if autoFetch {
-                                autoIndicator
-                            }
-                        }
-                    }
+            // Search toggle
+            Button {
+                showingSearch.toggle()
+                if showingSearch {
+                    searchFieldFocused = true
                 }
-                .buttonStyle(.plain)
-                .help(autoFetch ? "Auto-sync ON — click to disable" : "Auto-sync OFF — click to enable")
-            } else {
-                // Loading state
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(Color.accent)
-                    Text("Loading...")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Color.textSecondary)
-                }
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(showingSearch ? Color.accent : Color.textTertiary)
+                    .frame(width: 30, height: 28)
             }
-
-            Spacer()
-            actionButtons
+            .buttonStyle(.plain)
+            .help("Search")
         }
-    }
-
-    private var noSongHeader: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "music.note")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(Color.textTertiary)
-            Text("No song playing")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color.textTertiary)
-            Spacer()
-            // Only show search button when no song
-            searchButton
-        }
-    }
-
-    // MARK: - Action Buttons
-
-    private var actionButtons: some View {
-        HStack(spacing: 6) {
-            // Other Tabs / viewing results toggle
-            if !tabService.results.isEmpty {
-                actionButton(
-                    icon: showingResults ? "music.note.list" : "list.bullet",
-                    active: showingResults,
-                    help: showingResults ? "Back to tab" : "Other tabs"
-                ) {
-                    showingResults.toggle()
-                }
-            }
-
-            searchButton
-
-            // Font size controls
-            actionButton(icon: "textformat.size.smaller", active: false, help: "Smaller text") {
-                fontSize = max(fontSizeRange.lowerBound, fontSize - 1)
-            }
-            actionButton(icon: "textformat.size.larger", active: false, help: "Larger text") {
-                fontSize = min(fontSizeRange.upperBound, fontSize + 1)
-            }
-
-            // Word wrap
-            actionButton(
-                icon: "text.justify.leading",
-                active: wordWrap,
-                help: wordWrap ? "Wrap: ON" : "Wrap: OFF"
-            ) {
-                wordWrap.toggle()
-            }
-        }
-    }
-
-    private var searchButton: some View {
-        actionButton(
-            icon: "magnifyingglass",
-            active: showingSearch,
-            help: "Search"
-        ) {
-            showingSearch.toggle()
-            if showingSearch {
-                searchFieldFocused = true
-            }
-        }
-    }
-
-    private func actionButton(icon: String, active: Bool, help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(active ? Color.accent : Color.textTertiary)
-                .frame(width: 26, height: 26)
-                .background(active ? Color.accent.opacity(0.12) : Color.bgTertiary)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-        }
-        .buttonStyle(.plain)
-        .help(help)
-    }
-
-    private var autoIndicator: some View {
-        Text("AUTO")
-            .font(.system(size: 8, weight: .heavy))
-            .tracking(0.5)
-            .foregroundStyle(Color.accent)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2)
-            .background(Color.accent.opacity(0.12))
-            .clipShape(Capsule())
+        .glassEffect(in: RoundedRectangle(cornerRadius: 8))
     }
 
     // MARK: - Search Field
@@ -296,8 +245,7 @@ struct ContentView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
-            .background(Color.bgTertiary)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .glassEffect(in: RoundedRectangle(cornerRadius: 10))
 
             if !searchText.isEmpty {
                 Button {
@@ -338,25 +286,36 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Tab Content
+    // MARK: - Tab Content with Floating Controls
 
     private func tabContentArea(_ tab: TabContent) -> some View {
-        Group {
-            if wordWrap {
-                ScrollView(.vertical) {
-                    tabText(tab.content)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(16)
-                }
-            } else {
-                ScrollView([.horizontal, .vertical]) {
-                    tabText(tab.content)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .padding(16)
+        ZStack(alignment: .bottomTrailing) {
+            Group {
+                if wordWrap {
+                    ScrollView(.vertical) {
+                        tabText(tab.content)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(16)
+                    }
+                } else {
+                    ScrollView([.horizontal, .vertical]) {
+                        tabText(tab.content)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .padding(16)
+                    }
                 }
             }
+
+            // Floating text controls — visible on hover
+            floatingTextControls
+                .padding(12)
+                .opacity(contentHovered ? 1 : 0)
+                .animation(.easeInOut(duration: 0.2), value: contentHovered)
         }
         .background(Color.bgPrimary)
+        .onHover { hovering in
+            contentHovered = hovering
+        }
     }
 
     private func tabText(_ content: String) -> some View {
@@ -364,6 +323,59 @@ struct ContentView: View {
             .font(.system(size: fontSize, design: .monospaced))
             .foregroundStyle(Color(white: 0.82))
             .textSelection(.enabled)
+    }
+
+    // MARK: - Floating Text Controls
+
+    private var floatingTextControls: some View {
+        HStack(spacing: 8) {
+            // Connected A-/A+ group
+            fontSizeGroup
+
+            // Wrap toggle
+            Button {
+                wordWrap.toggle()
+            } label: {
+                Image(systemName: "text.justify.leading")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(wordWrap ? Color.accent : Color.textTertiary)
+                    .frame(width: 30, height: 28)
+            }
+            .buttonStyle(.plain)
+            .glassEffect(in: RoundedRectangle(cornerRadius: 8))
+            .help(wordWrap ? "Wrap: ON" : "Wrap: OFF")
+        }
+    }
+
+    private var fontSizeGroup: some View {
+        HStack(spacing: 0) {
+            Button {
+                fontSize = max(fontSizeRange.lowerBound, fontSize - 1)
+            } label: {
+                Image(systemName: "textformat.size.smaller")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.textTertiary)
+                    .frame(width: 30, height: 28)
+            }
+            .buttonStyle(.plain)
+            .help("Smaller text")
+
+            Divider()
+                .frame(height: 14)
+                .opacity(0.3)
+
+            Button {
+                fontSize = min(fontSizeRange.upperBound, fontSize + 1)
+            } label: {
+                Image(systemName: "textformat.size.larger")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.textTertiary)
+                    .frame(width: 30, height: 28)
+            }
+            .buttonStyle(.plain)
+            .help("Larger text")
+        }
+        .glassEffect(in: RoundedRectangle(cornerRadius: 8))
     }
 
     // MARK: - Search Results List
