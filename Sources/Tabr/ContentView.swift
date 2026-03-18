@@ -37,13 +37,52 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            topBar
-            Color.divider.frame(height: 1)
+            if showingSearch {
+                searchField
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                Color.divider.frame(height: 1)
+            }
             contentArea
         }
         .frame(minWidth: 460, minHeight: 400)
         .background(Color.bgPrimary)
         .preferredColorScheme(.dark)
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                HStack(spacing: 12) {
+                    tabrLogo
+                    songInfoSection
+                }
+            }
+
+            ToolbarItemGroup(placement: .primaryAction) {
+                if !tabService.results.isEmpty {
+                    Button {
+                        showingResults.toggle()
+                    } label: {
+                        Image(systemName: showingResults ? "music.note.list" : "list.bullet")
+                    }
+                    .help(showingResults ? "Back to tab" : "Other tabs")
+                }
+
+                ControlGroup {
+                    Toggle(isOn: $autoFetch) {
+                        Text("AUTO")
+                    }
+
+                    Button {
+                        showingSearch.toggle()
+                        if showingSearch {
+                            searchFieldFocused = true
+                        }
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                    }
+                    .help("Search")
+                }
+            }
+        }
         .onAppear {
             nowPlayingService.startMonitoring()
         }
@@ -61,33 +100,7 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Top Bar
-
-    private var topBar: some View {
-        VStack(spacing: 0) {
-            // Single row: TABR logo + song info + action buttons
-            HStack(alignment: .center, spacing: 14) {
-                tabrLogo
-
-                songInfoSection
-
-                Spacer()
-
-                headerActionButtons
-            }
-            .padding(.top, 8)
-
-            // Inline search field (shown when search is toggled)
-            if showingSearch {
-                searchField
-                    .padding(.top, 8)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 12)
-        .glassEffect(.regular.tint(Color.bgSecondary.opacity(0.5)),
-                      in: UnevenRoundedRectangle(cornerRadii: .init(bottomLeading: 0, bottomTrailing: 0)))
-    }
+    // MARK: - TABR Logo
 
     private var tabrLogo: some View {
         Text("T A B R")
@@ -102,7 +115,7 @@ struct ContentView: View {
             )
     }
 
-    // MARK: - Song Info (plain text, no tap action)
+    // MARK: - Song Info
 
     @ViewBuilder
     private var songInfoSection: some View {
@@ -110,13 +123,13 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 8) {
                     Text(tab.title)
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(Color.textPrimary)
                         .lineLimit(1)
                     typeBadge(tab.type)
                 }
                 Text(tab.artist)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Color.textSecondary)
                     .lineLimit(1)
             }
@@ -126,92 +139,30 @@ struct ContentView: View {
                     .controlSize(.small)
                     .tint(Color.accent)
                 Text("Loading...")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color.textSecondary)
             }
         } else if let info = nowPlayingService.nowPlaying {
             VStack(alignment: .leading, spacing: 2) {
                 Text(info.title)
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Color.textPrimary)
                     .lineLimit(1)
                 Text(info.artist)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Color.textSecondary)
                     .lineLimit(1)
             }
         } else {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Image(systemName: "music.note")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color.textTertiary)
                 Text("No song playing")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color.textTertiary)
             }
         }
-    }
-
-    // MARK: - Header Action Buttons
-
-    private var headerActionButtons: some View {
-        HStack(spacing: 8) {
-            // Other Tabs button
-            if !tabService.results.isEmpty {
-                Button {
-                    showingResults.toggle()
-                } label: {
-                    Image(systemName: showingResults ? "music.note.list" : "list.bullet")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(showingResults ? Color.accent : Color.textTertiary)
-                        .frame(width: 30, height: 28)
-                }
-                .buttonStyle(.plain)
-                .glassEffect(in: RoundedRectangle(cornerRadius: 8))
-                .help(showingResults ? "Back to tab" : "Other tabs")
-            }
-
-            // AUTO + Search connected group
-            autoSearchGroup
-        }
-    }
-
-    private var autoSearchGroup: some View {
-        HStack(spacing: 0) {
-            // AUTO toggle
-            Button {
-                autoFetch.toggle()
-            } label: {
-                Text("AUTO")
-                    .font(.system(size: 9, weight: .heavy))
-                    .tracking(0.5)
-                    .foregroundStyle(autoFetch ? Color.accent : Color.textTertiary)
-                    .frame(height: 28)
-                    .padding(.horizontal, 10)
-            }
-            .buttonStyle(.plain)
-            .help(autoFetch ? "Auto-sync ON" : "Auto-sync OFF")
-
-            Divider()
-                .frame(height: 14)
-                .opacity(0.3)
-
-            // Search toggle
-            Button {
-                showingSearch.toggle()
-                if showingSearch {
-                    searchFieldFocused = true
-                }
-            } label: {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(showingSearch ? Color.accent : Color.textTertiary)
-                    .frame(width: 30, height: 28)
-            }
-            .buttonStyle(.plain)
-            .help("Search")
-        }
-        .glassEffect(in: RoundedRectangle(cornerRadius: 8))
     }
 
     // MARK: - Search Field
@@ -245,17 +196,16 @@ struct ContentView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
-            .glassEffect(in: RoundedRectangle(cornerRadius: 10))
+            .background(Color.bgTertiary)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
 
             if !searchText.isEmpty {
-                Button {
+                Button("Search") {
                     submitSearch()
-                } label: {
-                    Image(systemName: "arrow.right.circle.fill")
-                        .font(.system(size: 20))
-                        .foregroundStyle(Color.accent)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderedProminent)
+                .tint(Color.accent)
+                .controlSize(.small)
             }
         }
     }
@@ -328,54 +278,33 @@ struct ContentView: View {
     // MARK: - Floating Text Controls
 
     private var floatingTextControls: some View {
-        HStack(spacing: 8) {
-            // Connected A-/A+ group
-            fontSizeGroup
+        GlassEffectContainer {
+            HStack(spacing: 4) {
+                ControlGroup {
+                    Button {
+                        fontSize = max(fontSizeRange.lowerBound, fontSize - 1)
+                    } label: {
+                        Image(systemName: "textformat.size.smaller")
+                    }
+                    .help("Smaller text")
 
-            // Wrap toggle
-            Button {
-                wordWrap.toggle()
-            } label: {
-                Image(systemName: "text.justify.leading")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(wordWrap ? Color.accent : Color.textTertiary)
-                    .frame(width: 30, height: 28)
+                    Button {
+                        fontSize = min(fontSizeRange.upperBound, fontSize + 1)
+                    } label: {
+                        Image(systemName: "textformat.size.larger")
+                    }
+                    .help("Larger text")
+                }
+                .controlSize(.small)
+
+                Toggle(isOn: $wordWrap) {
+                    Image(systemName: "text.justify.leading")
+                }
+                .toggleStyle(.button)
+                .controlSize(.small)
+                .help(wordWrap ? "Wrap: ON" : "Wrap: OFF")
             }
-            .buttonStyle(.plain)
-            .glassEffect(in: RoundedRectangle(cornerRadius: 8))
-            .help(wordWrap ? "Wrap: ON" : "Wrap: OFF")
         }
-    }
-
-    private var fontSizeGroup: some View {
-        HStack(spacing: 0) {
-            Button {
-                fontSize = max(fontSizeRange.lowerBound, fontSize - 1)
-            } label: {
-                Image(systemName: "textformat.size.smaller")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.textTertiary)
-                    .frame(width: 30, height: 28)
-            }
-            .buttonStyle(.plain)
-            .help("Smaller text")
-
-            Divider()
-                .frame(height: 14)
-                .opacity(0.3)
-
-            Button {
-                fontSize = min(fontSizeRange.upperBound, fontSize + 1)
-            } label: {
-                Image(systemName: "textformat.size.larger")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.textTertiary)
-                    .frame(width: 30, height: 28)
-            }
-            .buttonStyle(.plain)
-            .help("Larger text")
-        }
-        .glassEffect(in: RoundedRectangle(cornerRadius: 8))
     }
 
     // MARK: - Search Results List

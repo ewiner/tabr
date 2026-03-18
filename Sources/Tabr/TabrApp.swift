@@ -12,7 +12,8 @@ struct TabrApp: App {
                 .environmentObject(nowPlayingService)
                 .environmentObject(tabService)
         }
-        .windowStyle(.hiddenTitleBar)
+        .windowStyle(.titleBar)
+        .windowToolbarStyle(.unifiedCompact)
         .defaultSize(width: 520, height: 700)
     }
 }
