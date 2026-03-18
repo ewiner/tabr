@@ -48,7 +48,6 @@ struct ContentView: View {
         .toolbar {
             ToolbarItem(placement: .principal) {
                 tabrLogo
-                    .glassEffect(.never)
             }
         }
         .onAppear {
