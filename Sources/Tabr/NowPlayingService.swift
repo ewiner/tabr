@@ -40,28 +40,17 @@ class NowPlayingService: ObservableObject {
 
     private func loadMediaRemote() {
         let frameworkPath = "/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote"
-        guard let handle = dlopen(frameworkPath, RTLD_NOW) else {
-            print("⚠ Could not load MediaRemote framework: \(String(cString: dlerror()))")
-            return
-        }
+        guard let handle = dlopen(frameworkPath, RTLD_NOW) else { return }
         mediaRemoteHandle = handle
-        print("✓ MediaRemote framework loaded")
 
-        guard let infoSymbol = dlsym(handle, "MRMediaRemoteGetNowPlayingInfo") else {
-            print("⚠ Could not find MRMediaRemoteGetNowPlayingInfo")
-            return
-        }
+        guard let infoSymbol = dlsym(handle, "MRMediaRemoteGetNowPlayingInfo") else { return }
         getNowPlayingInfo = unsafeBitCast(infoSymbol, to: MRMediaRemoteGetNowPlayingInfoFunction.self)
-        print("✓ MRMediaRemoteGetNowPlayingInfo resolved")
 
         if let regSymbol = dlsym(handle, "MRMediaRemoteRegisterForNowPlayingNotifications") {
             registerForNotifications = unsafeBitCast(
                 regSymbol,
                 to: MRMediaRemoteRegisterForNowPlayingNotificationsFunction.self
             )
-            print("✓ MRMediaRemoteRegisterForNowPlayingNotifications resolved")
-        } else {
-            print("⚠ MRMediaRemoteRegisterForNowPlayingNotifications not found (non-fatal)")
         }
     }
 
@@ -84,21 +73,12 @@ class NowPlayingService: ObservableObject {
     }
 
     func poll() {
-        guard let getNowPlayingInfo else {
-            print("⚠ poll() called but getNowPlayingInfo is nil")
-            return
-        }
+        guard let getNowPlayingInfo else { return }
 
         getNowPlayingInfo(DispatchQueue.main) { [weak self] info in
             guard let self else { return }
-
-            print("📻 Now Playing raw keys: \(info.keys.sorted())")
-
             let title = info[self.kMRMediaRemoteNowPlayingInfoTitle] as? String
             let artist = info[self.kMRMediaRemoteNowPlayingInfoArtist] as? String
-
-            print("   title=\(title ?? "(nil)") artist=\(artist ?? "(nil)")")
-
             if let title, let artist, !title.isEmpty, !artist.isEmpty {
                 let newInfo = NowPlayingInfo(title: title, artist: artist)
                 if self.nowPlaying != newInfo {
