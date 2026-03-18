@@ -12,14 +12,13 @@ struct TabrApp: App {
                 .environmentObject(nowPlayingService)
                 .environmentObject(tabService)
         }
-        .windowStyle(.titleBar)
+        .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 520, height: 700)
     }
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Keep the app running even when the window is closed
         NSApp.setActivationPolicy(.regular)
     }
 
