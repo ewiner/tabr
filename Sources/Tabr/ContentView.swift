@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // MARK: - Color Palette
 
@@ -103,6 +104,8 @@ struct ContentView: View {
             }
             .padding(.top, 8)
 
+            metadataBar
+
             if showingSearch {
                 searchField
                     .padding(.top, 8)
@@ -166,11 +169,22 @@ struct ContentView: View {
 
     private var headerActionButtons: some View {
         HStack(spacing: 6) {
+            if let tab = tabService.selectedTab {
+                Button {
+                    NSWorkspace.shared.open(tab.url)
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                        .frame(maxHeight: .infinity)
+                }
+                .help("Open in Ultimate Guitar")
+            }
+
             if !tabService.results.isEmpty {
                 Button {
                     showingResults.toggle()
                 } label: {
                     Image(systemName: showingResults ? "music.note.list" : "list.bullet")
+                        .frame(maxHeight: .infinity)
                 }
                 .help(showingResults ? "Back to tab" : "Other tabs")
             }
@@ -189,10 +203,42 @@ struct ContentView: View {
                 }
             } label: {
                 Image(systemName: "magnifyingglass")
+                    .frame(maxHeight: .infinity)
             }
             .help("Search")
         }
+        .buttonStyle(.bordered)
+        .fixedSize(horizontal: false, vertical: true)
         .controlSize(.regular)
+    }
+
+    // MARK: - Metadata Bar
+
+    @ViewBuilder
+    private var metadataBar: some View {
+        if let tab = tabService.selectedTab {
+            let isStandardTuning = tab.tuning == nil
+                || tab.tuning == "E A D G B E"
+                || tab.tuning == "Standard"
+                || tab.tuning == "E A D G B e"
+            let hasCapo = (tab.capo ?? 0) > 0
+            if !isStandardTuning || hasCapo {
+                HStack(spacing: 12) {
+                    if !isStandardTuning, let tuning = tab.tuning {
+                        Label(tuning, systemImage: "tuningfork")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color.accentBlue)
+                    }
+                    if hasCapo, let capo = tab.capo {
+                        Label("Capo \(capo)", systemImage: "paperclip")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color.accentPurple)
+                    }
+                    Spacer()
+                }
+                .padding(.top, 6)
+            }
+        }
     }
 
     // MARK: - Search Field
