@@ -9,6 +9,7 @@ struct TabResult: Identifiable, Equatable {
     let votes: Int
     let type: String // "Chords", "Tab", etc.
     let url: URL
+    let relevanceScore: Double
 
     static func == (lhs: TabResult, rhs: TabResult) -> Bool {
         lhs.url == rhs.url
@@ -22,6 +23,7 @@ struct TabContent: Equatable {
     let content: String // The actual tab/chord text
 }
 
+@MainActor
 class TabSearchService: ObservableObject {
     @Published var results: [TabResult] = []
     @Published var selectedTab: TabContent?
@@ -32,13 +34,21 @@ class TabSearchService: ObservableObject {
 
     private var currentTask: Task<Void, Never>?
 
-    /// Search Ultimate Guitar for tabs matching the query
-    func search(query: String) {
+    // Store search components for relevance scoring
+    private var searchArtist = ""
+    private var searchTitle = ""
+
+    /// Search Ultimate Guitar for tabs matching the query.
+    /// When `autoSelect` is true (default for auto/now-playing searches), the best result is loaded immediately.
+    /// When false (manual search), results are shown for the user to pick from.
+    func search(query: String, artist: String = "", title: String = "", autoSelect: Bool = true) {
         guard !query.isEmpty, query != lastQuery else { return }
         lastQuery = query
+        searchArtist = artist
+        searchTitle = title
 
         currentTask?.cancel()
-        currentTask = Task { @MainActor in
+        currentTask = Task {
             self.isSearching = true
             self.errorMessage = nil
             self.results = []
@@ -48,6 +58,9 @@ class TabSearchService: ObservableObject {
                 let results = try await performSearch(query: query)
                 if !Task.isCancelled {
                     self.results = results
+                    if autoSelect, let best = results.first {
+                        self.loadTab(best)
+                    }
                 }
             } catch {
                 if !Task.isCancelled {
@@ -61,8 +74,7 @@ class TabSearchService: ObservableObject {
 
     /// Load the full tab content from a result
     func loadTab(_ result: TabResult) {
-        currentTask?.cancel()
-        currentTask = Task { @MainActor in
+        currentTask = Task {
             self.isLoadingTab = true
             self.errorMessage = nil
 
@@ -79,6 +91,73 @@ class TabSearchService: ObservableObject {
 
             self.isLoadingTab = false
         }
+    }
+
+    // MARK: - Relevance Scoring
+
+    /// Normalize a string for fuzzy comparison: lowercase, strip punctuation, collapse whitespace
+    private static func normalize(_ s: String) -> String {
+        let lowered = s.lowercased()
+        let stripped = lowered.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) || $0 == " " }
+        let str = String(stripped)
+        return str.components(separatedBy: .whitespaces).filter { !$0.isEmpty }.joined(separator: " ")
+    }
+
+    /// Word overlap score between two strings (0..1)
+    private static func wordOverlap(_ a: String, _ b: String) -> Double {
+        let wordsA = Set(normalize(a).components(separatedBy: " "))
+        let wordsB = Set(normalize(b).components(separatedBy: " "))
+        guard !wordsA.isEmpty && !wordsB.isEmpty else { return 0 }
+        let intersection = wordsA.intersection(wordsB).count
+        let smaller = min(wordsA.count, wordsB.count)
+        return Double(intersection) / Double(smaller)
+    }
+
+    /// Compute relevance of a result against the search artist/title
+    private func relevanceScore(resultTitle: String, resultArtist: String) -> Double {
+        let normSearchTitle = Self.normalize(searchTitle)
+        let normSearchArtist = Self.normalize(searchArtist)
+        let normResultTitle = Self.normalize(resultTitle)
+        let normResultArtist = Self.normalize(resultArtist)
+
+        // Title score
+        var titleScore: Double = 0
+        if !normSearchTitle.isEmpty {
+            if normResultTitle == normSearchTitle {
+                titleScore = 1.0
+            } else if normResultTitle.contains(normSearchTitle) || normSearchTitle.contains(normResultTitle) {
+                titleScore = 0.8
+            } else {
+                titleScore = Self.wordOverlap(normSearchTitle, normResultTitle)
+            }
+        } else {
+            titleScore = 0.5 // No search title to compare against
+        }
+
+        // Artist score
+        var artistScore: Double = 0
+        if !normSearchArtist.isEmpty {
+            if normResultArtist == normSearchArtist {
+                artistScore = 1.0
+            } else if normResultArtist.contains(normSearchArtist) || normSearchArtist.contains(normResultArtist) {
+                artistScore = 0.8
+            } else {
+                artistScore = Self.wordOverlap(normSearchArtist, normResultArtist)
+            }
+        } else {
+            artistScore = 0.5
+        }
+
+        return 0.5 * titleScore + 0.5 * artistScore
+    }
+
+    /// Bayesian weighted rating: balances rating vs vote count
+    /// A 4.7 with 1000 votes beats a 4.8 with 20 votes
+    private static func weightedRating(rating: Double, votes: Int) -> Double {
+        let k: Double = 50 // prior weight
+        let avgRating: Double = 3.5 // assumed global average
+        let v = Double(votes)
+        return (v / (v + k)) * rating + (k / (v + k)) * avgRating
     }
 
     // MARK: - Networking
@@ -111,12 +190,7 @@ class TabSearchService: ObservableObject {
         }
 
         let encodedJSON = String(afterStore[..<endQuote])
-        let decodedJSON = encodedJSON
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: "&#x27;", with: "'")
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&gt;", with: ">")
+        let decodedJSON = Self.decodeHTMLEntities(encodedJSON)
 
         guard let jsonData = decodedJSON.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
@@ -127,7 +201,38 @@ class TabSearchService: ObservableObject {
             return parseSearchResultsFallback(html: html)
         }
 
-        return results.compactMap { result -> TabResult? in
+        return rankResults(results)
+    }
+
+    private func parseSearchResultsFallback(html: String) -> [TabResult] {
+        guard let resultsRange = html.range(of: "\"results\":["),
+              let startBracket = html.range(of: "[", range: resultsRange.upperBound..<html.endIndex) else {
+            return []
+        }
+
+        var depth = 1
+        var idx = startBracket.upperBound
+        while idx < html.endIndex && depth > 0 {
+            let ch = html[idx]
+            if ch == "[" { depth += 1 }
+            if ch == "]" { depth -= 1 }
+            idx = html.index(after: idx)
+        }
+
+        let arrayStr = "[\(html[startBracket.upperBound..<html.index(before: idx)])]"
+        let decoded = Self.decodeHTMLEntities(arrayStr)
+
+        guard let data = decoded.data(using: .utf8),
+              let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            return []
+        }
+
+        return rankResults(items)
+    }
+
+    /// Shared ranking logic: filter types, compute relevance + weighted rating, sort, and cap results
+    private func rankResults(_ items: [[String: Any]]) -> [TabResult] {
+        let results: [TabResult] = items.compactMap { result -> TabResult? in
             guard let title = result["song_name"] as? String,
                   let artist = result["artist_name"] as? String,
                   let urlString = result["tab_url"] as? String,
@@ -139,69 +244,41 @@ class TabSearchService: ObservableObject {
             let rating = result["rating"] as? Double ?? 0
             let votes = result["votes"] as? Int ?? 0
 
-            // Prefer chords and standard tabs
-            guard type == "Chords" || type == "Tab" || type == "Ukulele" else {
+            // Only keep Chords and Tabs (standard guitar content)
+            guard type == "Chords" || type == "Tab" else {
                 return nil
             }
 
+            let relevance = relevanceScore(
+                resultTitle: Self.decodeHTMLEntities(title),
+                resultArtist: Self.decodeHTMLEntities(artist)
+            )
+
             return TabResult(
-                title: title,
-                artist: artist,
+                title: Self.decodeHTMLEntities(title),
+                artist: Self.decodeHTMLEntities(artist),
                 rating: rating,
                 votes: votes,
                 type: type,
-                url: url
+                url: url,
+                relevanceScore: relevance
             )
         }
-        .sorted { $0.rating > $1.rating }
-    }
 
-    private func parseSearchResultsFallback(html: String) -> [TabResult] {
-        // Try to extract from js-store JSON blob that sometimes appears differently
-        // Look for the pattern: "results":[ ... ]
-        guard let resultsRange = html.range(of: "\"results\":["),
-              let startBracket = html.range(of: "[", range: resultsRange.upperBound..<html.endIndex) else {
-            return []
+        // Filter out low-relevance results (when we have search terms to compare)
+        let hasSearchTerms = !searchArtist.isEmpty || !searchTitle.isEmpty
+        let filtered = hasSearchTerms ? results.filter { $0.relevanceScore >= 0.3 } : results
+
+        // Sort: primary by relevance, secondary by weighted rating
+        return filtered.sorted { a, b in
+            // If relevance differs significantly, sort by relevance
+            if abs(a.relevanceScore - b.relevanceScore) > 0.15 {
+                return a.relevanceScore > b.relevanceScore
+            }
+            // Otherwise sort by weighted rating
+            return Self.weightedRating(rating: a.rating, votes: a.votes) >
+                   Self.weightedRating(rating: b.rating, votes: b.votes)
         }
-
-        // Find matching closing bracket
-        var depth = 1
-        var idx = startBracket.upperBound
-        while idx < html.endIndex && depth > 0 {
-            let ch = html[idx]
-            if ch == "[" { depth += 1 }
-            if ch == "]" { depth -= 1 }
-            idx = html.index(after: idx)
-        }
-
-        let arrayStr = "[\(html[startBracket.upperBound..<html.index(before: idx)])]"
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&amp;", with: "&")
-
-        guard let data = arrayStr.data(using: .utf8),
-              let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            return []
-        }
-
-        return items.compactMap { item -> TabResult? in
-            guard let title = item["song_name"] as? String,
-                  let artist = item["artist_name"] as? String,
-                  let urlStr = item["tab_url"] as? String,
-                  let url = URL(string: urlStr) else { return nil }
-
-            let type = item["type"] as? String ?? "Chords"
-            guard type == "Chords" || type == "Tab" || type == "Ukulele" else { return nil }
-
-            return TabResult(
-                title: title,
-                artist: artist,
-                rating: item["rating"] as? Double ?? 0,
-                votes: item["votes"] as? Int ?? 0,
-                type: type,
-                url: url
-            )
-        }
-        .sorted { $0.rating > $1.rating }
     }
 
     func fetchTabContent(result: TabResult) async throws -> TabContent {
@@ -211,7 +288,6 @@ class TabSearchService: ObservableObject {
         let (data, _) = try await URLSession.shared.data(for: request)
         let html = String(data: data, encoding: .utf8) ?? ""
 
-        // Tab content is also stored in the js-store data-content JSON
         let tabText = extractTabContent(from: html)
 
         return TabContent(
@@ -223,7 +299,6 @@ class TabSearchService: ObservableObject {
     }
 
     private func extractTabContent(from html: String) -> String {
-        // UG stores tab content in the data-content JSON as wiki_tab.content
         guard let storeRange = html.range(of: "data-content=\"") else {
             return extractTabContentFallback(from: html)
         }
@@ -234,12 +309,7 @@ class TabSearchService: ObservableObject {
         }
 
         let encoded = String(afterStore[..<endQuote])
-        let decoded = encoded
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: "&#x27;", with: "'")
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&gt;", with: ">")
+        let decoded = Self.decodeHTMLEntities(encoded)
 
         guard let jsonData = decoded.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
@@ -249,14 +319,12 @@ class TabSearchService: ObservableObject {
             return extractTabContentFallback(from: html)
         }
 
-        // Try tab_view.wiki_tab.content
         if let tabView = data["tab_view"] as? [String: Any],
            let wikiTab = tabView["wiki_tab"] as? [String: Any],
            let content = wikiTab["content"] as? String {
             return cleanTabContent(content)
         }
 
-        // Try tab.content
         if let tab = data["tab"] as? [String: Any],
            let content = tab["content"] as? String {
             return cleanTabContent(content)
@@ -266,7 +334,6 @@ class TabSearchService: ObservableObject {
     }
 
     private func extractTabContentFallback(from html: String) -> String {
-        // Look for content between common tab content markers
         if let preRange = html.range(of: "<pre class=\"") {
             let afterPre = html[preRange.lowerBound...]
             if let contentStart = afterPre.range(of: ">"),
@@ -279,7 +346,8 @@ class TabSearchService: ObservableObject {
     }
 
     private func cleanTabContent(_ raw: String) -> String {
-        raw.replacingOccurrences(of: "[tab]", with: "")
+        var text = raw
+            .replacingOccurrences(of: "[tab]", with: "")
             .replacingOccurrences(of: "[/tab]", with: "")
             .replacingOccurrences(of: "[ch]", with: "")
             .replacingOccurrences(of: "[/ch]", with: "")
@@ -288,5 +356,73 @@ class TabSearchService: ObservableObject {
             .replacingOccurrences(of: "<br />", with: "\n")
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
+        text = Self.decodeHTMLEntities(text)
+        return text
+    }
+
+    // MARK: - HTML Entity Decoding
+
+    /// Comprehensive HTML entity decoder — handles named entities and numeric (decimal + hex)
+    static func decodeHTMLEntities(_ string: String) -> String {
+        var result = string
+        // Named entities
+        let namedEntities: [(String, String)] = [
+            ("&quot;", "\""),
+            ("&amp;", "&"),
+            ("&apos;", "'"),
+            ("&#x27;", "'"),
+            ("&#039;", "'"),
+            ("&lt;", "<"),
+            ("&gt;", ">"),
+            ("&nbsp;", " "),
+            ("&ndash;", "\u{2013}"),
+            ("&mdash;", "\u{2014}"),
+            ("&lsquo;", "\u{2018}"),
+            ("&rsquo;", "\u{2019}"),
+            ("&ldquo;", "\u{201C}"),
+            ("&rdquo;", "\u{201D}"),
+            ("&hellip;", "\u{2026}"),
+        ]
+        // Decode &amp; last to avoid double-decoding, but process it in order
+        // Actually, decode &amp; first so that &amp;quot; doesn't become &quot; then "
+        // No — decode &amp; last: if the source has &amp;quot; it should become &quot; (literal), not "
+        // The safe order: decode specific entities first, then &amp; last
+        for (entity, replacement) in namedEntities where entity != "&amp;" {
+            result = result.replacingOccurrences(of: entity, with: replacement)
+        }
+
+        // Decode decimal numeric entities: &#NNN;
+        if let regex = try? NSRegularExpression(pattern: "&#(\\d+);", options: []) {
+            let nsString = result as NSString
+            let matches = regex.matches(in: result, range: NSRange(location: 0, length: nsString.length))
+            // Process in reverse to preserve indices
+            for match in matches.reversed() {
+                if let range = Range(match.range(at: 1), in: result),
+                   let codePoint = UInt32(result[range]),
+                   let scalar = Unicode.Scalar(codePoint) {
+                    let fullRange = Range(match.range, in: result)!
+                    result.replaceSubrange(fullRange, with: String(Character(scalar)))
+                }
+            }
+        }
+
+        // Decode hex numeric entities: &#xHH;
+        if let regex = try? NSRegularExpression(pattern: "&#x([0-9a-fA-F]+);", options: []) {
+            let nsString = result as NSString
+            let matches = regex.matches(in: result, range: NSRange(location: 0, length: nsString.length))
+            for match in matches.reversed() {
+                if let range = Range(match.range(at: 1), in: result),
+                   let codePoint = UInt32(result[range], radix: 16),
+                   let scalar = Unicode.Scalar(codePoint) {
+                    let fullRange = Range(match.range, in: result)!
+                    result.replaceSubrange(fullRange, with: String(Character(scalar)))
+                }
+            }
+        }
+
+        // Decode &amp; last
+        result = result.replacingOccurrences(of: "&amp;", with: "&")
+
+        return result
     }
 }
