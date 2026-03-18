@@ -44,9 +44,11 @@ struct ContentView: View {
         .frame(minWidth: 460, minHeight: 400)
         .background(Color.bgPrimary)
         .preferredColorScheme(.dark)
+        .navigationTitle("")
         .toolbar {
             ToolbarItem(placement: .principal) {
                 tabrLogo
+                    .glassEffect(.never)
             }
         }
         .onAppear {
