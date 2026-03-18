@@ -48,8 +48,8 @@ struct ContentView: View {
         .toolbar {
             ToolbarItem(placement: .principal) {
                 tabrLogo
-                    .glassEffect(.identity)
             }
+            .sharedBackgroundVisibility(.hidden)
         }
         .onAppear {
             nowPlayingService.startMonitoring()
