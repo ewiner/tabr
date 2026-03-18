@@ -175,6 +175,7 @@ struct ContentView: View {
                 } label: {
                     Image(systemName: "square.and.arrow.up")
                 }
+                .buttonStyle(.bordered)
                 .help("Open in Ultimate Guitar")
             }
 
@@ -184,6 +185,7 @@ struct ContentView: View {
                 } label: {
                     Image(systemName: showingResults ? "music.note.list" : "list.bullet")
                 }
+                .buttonStyle(.bordered)
                 .help(showingResults ? "Back to tab" : "Other tabs")
             }
 
@@ -202,6 +204,7 @@ struct ContentView: View {
             } label: {
                 Image(systemName: "magnifyingglass")
             }
+            .buttonStyle(.bordered)
             .help("Search")
         }
         .controlSize(.regular)
