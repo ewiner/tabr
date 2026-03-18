@@ -173,8 +173,8 @@ struct ContentView: View {
                 Button {
                     NSWorkspace.shared.open(tab.url)
                 } label: {
-                    Label("Open", systemImage: "square.and.arrow.up")
-                        .labelStyle(.iconOnly)
+                    Image(systemName: "square.and.arrow.up")
+                        .frame(maxHeight: .infinity)
                 }
                 .help("Open in Ultimate Guitar")
             }
@@ -183,8 +183,8 @@ struct ContentView: View {
                 Button {
                     showingResults.toggle()
                 } label: {
-                    Label("Tabs", systemImage: showingResults ? "music.note.list" : "list.bullet")
-                        .labelStyle(.iconOnly)
+                    Image(systemName: showingResults ? "music.note.list" : "list.bullet")
+                        .frame(maxHeight: .infinity)
                 }
                 .help(showingResults ? "Back to tab" : "Other tabs")
             }
@@ -202,12 +202,13 @@ struct ContentView: View {
                     searchFieldFocused = true
                 }
             } label: {
-                Label("Search", systemImage: "magnifyingglass")
-                    .labelStyle(.iconOnly)
+                Image(systemName: "magnifyingglass")
+                    .frame(maxHeight: .infinity)
             }
             .help("Search")
         }
         .buttonStyle(.bordered)
+        .fixedSize(horizontal: false, vertical: true)
         .controlSize(.regular)
     }
 
