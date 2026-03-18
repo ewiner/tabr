@@ -146,7 +146,7 @@ struct ContentView: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(.accentColor)
+                .foregroundColor(.accentColor)
 
                 Spacer()
 
