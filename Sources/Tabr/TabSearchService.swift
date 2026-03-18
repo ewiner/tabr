@@ -37,8 +37,10 @@ class TabSearchService: ObservableObject {
     private var searchArtist = ""
     private var searchTitle = ""
 
-    /// Search Ultimate Guitar for tabs matching the query
-    func search(query: String, artist: String = "", title: String = "") {
+    /// Search Ultimate Guitar for tabs matching the query.
+    /// When `autoSelect` is true (default for auto/now-playing searches), the best result is loaded immediately.
+    /// When false (manual search), results are shown for the user to pick from.
+    func search(query: String, artist: String = "", title: String = "", autoSelect: Bool = true) {
         guard !query.isEmpty, query != lastQuery else { return }
         lastQuery = query
         searchArtist = artist
@@ -55,8 +57,7 @@ class TabSearchService: ObservableObject {
                 let results = try await performSearch(query: query)
                 if !Task.isCancelled {
                     self.results = results
-                    // Auto-select the best result
-                    if let best = results.first {
+                    if autoSelect, let best = results.first {
                         self.loadTab(best)
                     }
                 }

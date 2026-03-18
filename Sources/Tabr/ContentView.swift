@@ -7,7 +7,6 @@ private extension Color {
     static let bgSecondary = Color(red: 0.10, green: 0.10, blue: 0.14)
     static let bgTertiary = Color(red: 0.13, green: 0.13, blue: 0.18)
     static let bgHover = Color.white.opacity(0.06)
-    static let bgSelected = Color.white.opacity(0.10)
     static let textPrimary = Color.white
     static let textSecondary = Color.white.opacity(0.55)
     static let textTertiary = Color.white.opacity(0.30)
@@ -25,26 +24,21 @@ struct ContentView: View {
     @EnvironmentObject var nowPlayingService: NowPlayingService
     @EnvironmentObject var tabService: TabSearchService
 
-    @State private var manualQuery = ""
     @State private var autoFetch = true
     @State private var wordWrap = false
+    @State private var fontSize: CGFloat = 14
+    @State private var showingResults = false
+    @State private var showingSearch = false
+    @State private var searchText = ""
+    @FocusState private var searchFieldFocused: Bool
+
+    private let fontSizeRange: ClosedRange<CGFloat> = 10...24
 
     var body: some View {
         VStack(spacing: 0) {
-            nowPlayingBar
+            topBar
             Color.divider.frame(height: 1)
-
-            if let tab = tabService.selectedTab {
-                tabContentView(tab)
-            } else if tabService.isLoadingTab {
-                loadingView("Loading tab...")
-            } else if !tabService.results.isEmpty {
-                searchResultsList
-            } else if tabService.isSearching {
-                loadingView("Searching...")
-            } else {
-                emptyStateView
-            }
+            contentArea
         }
         .frame(minWidth: 460, minHeight: 400)
         .background(Color.bgPrimary)
@@ -54,125 +48,322 @@ struct ContentView: View {
         }
         .onChange(of: nowPlayingService.nowPlaying) { _, newValue in
             if autoFetch, let info = newValue {
-                tabService.search(query: info.searchQuery, artist: info.artist, title: info.title)
+                showingResults = false
+                showingSearch = false
+                tabService.search(query: info.searchQuery, artist: info.artist, title: info.title, autoSelect: true)
+            }
+        }
+        // When auto-select loads a tab, switch back to tab view
+        .onChange(of: tabService.selectedTab) { _, newValue in
+            if newValue != nil && !showingResults {
+                showingSearch = false
             }
         }
     }
 
-    // MARK: - Now Playing Bar
+    // MARK: - Top Bar
 
-    private var nowPlayingBar: some View {
-        VStack(spacing: 10) {
-            if let info = nowPlayingService.nowPlaying {
-                HStack(spacing: 14) {
-                    // Animated music icon
-                    ZStack {
-                        Circle()
-                            .fill(Color.accent.opacity(0.15))
-                            .frame(width: 40, height: 40)
-                        Image(systemName: "waveform")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(Color.accent)
-                    }
+    private var topBar: some View {
+        VStack(spacing: 0) {
+            // TABR logo — always centered at the very top
+            tabrLogo
+                .padding(.top, 12)
+                .padding(.bottom, 8)
 
+            // Song info + action buttons
+            if tabService.selectedTab != nil || tabService.isLoadingTab {
+                selectedTabHeader
+            } else if let info = nowPlayingService.nowPlaying {
+                nowPlayingHeader(info)
+            } else {
+                noSongHeader
+            }
+
+            // Inline search field (shown when search is toggled)
+            if showingSearch {
+                searchField
+                    .padding(.top, 8)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
+        .background(Color.bgSecondary)
+    }
+
+    private var tabrLogo: some View {
+        Text("T A B R")
+            .font(.system(size: 11, weight: .black))
+            .tracking(4)
+            .foregroundStyle(
+                LinearGradient(
+                    colors: [Color.accent, Color.accent.opacity(0.7)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+    }
+
+    private func nowPlayingHeader(_ info: NowPlayingInfo) -> some View {
+        HStack(spacing: 10) {
+            // Song info — tap to toggle auto
+            Button {
+                autoFetch.toggle()
+            } label: {
+                HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(info.title)
                             .font(.system(size: 15, weight: .bold))
                             .foregroundStyle(Color.textPrimary)
                             .lineLimit(1)
-                        Text(info.artist)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Color.textSecondary)
-                            .lineLimit(1)
+                        HStack(spacing: 6) {
+                            Text(info.artist)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Color.textSecondary)
+                            if autoFetch {
+                                autoIndicator
+                            }
+                        }
                     }
-
-                    Spacer()
-
-                    // Auto toggle - pill style
-                    Button {
-                        autoFetch.toggle()
-                    } label: {
-                        Text("AUTO")
-                            .font(.system(size: 9, weight: .heavy))
-                            .tracking(0.5)
-                            .foregroundStyle(autoFetch ? Color.bgPrimary : Color.textTertiary)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(autoFetch ? Color.accent : Color.bgTertiary)
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .help("Auto-search when song changes")
-
-                    Button {
-                        tabService.search(query: info.searchQuery, artist: info.artist, title: info.title)
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color.textSecondary)
-                            .frame(width: 30, height: 30)
-                            .background(Color.bgTertiary)
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .help("Refresh search")
                 }
-            } else {
-                HStack(spacing: 14) {
-                    ZStack {
-                        Circle()
-                            .fill(Color.bgTertiary)
-                            .frame(width: 40, height: 40)
-                        Image(systemName: "music.note")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundStyle(Color.textTertiary)
+            }
+            .buttonStyle(.plain)
+            .help(autoFetch ? "Auto-sync ON — click to disable" : "Auto-sync OFF — click to enable")
+
+            Spacer()
+            actionButtons
+        }
+    }
+
+    private var selectedTabHeader: some View {
+        HStack(spacing: 10) {
+            if let tab = tabService.selectedTab {
+                // Song info — tap to toggle auto
+                Button {
+                    autoFetch.toggle()
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 8) {
+                            Text(tab.title)
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(Color.textPrimary)
+                                .lineLimit(1)
+                            typeBadge(tab.type)
+                        }
+                        HStack(spacing: 6) {
+                            Text(tab.artist)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Color.textSecondary)
+                            if autoFetch {
+                                autoIndicator
+                            }
+                        }
                     }
-
-                    Text("No song playing")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Color.textTertiary)
-
-                    Spacer()
+                }
+                .buttonStyle(.plain)
+                .help(autoFetch ? "Auto-sync ON — click to disable" : "Auto-sync OFF — click to enable")
+            } else {
+                // Loading state
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(Color.accent)
+                    Text("Loading...")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.textSecondary)
                 }
             }
 
-            // Search bar
-            HStack(spacing: 8) {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.textTertiary)
+            Spacer()
+            actionButtons
+        }
+    }
 
-                    TextField("Search tabs...", text: $manualQuery)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color.textPrimary)
-                        .onSubmit {
-                            if !manualQuery.isEmpty {
-                                tabService.search(query: manualQuery)
-                            }
-                        }
+    private var noSongHeader: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "music.note")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color.textTertiary)
+            Text("No song playing")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.textTertiary)
+            Spacer()
+            // Only show search button when no song
+            searchButton
+        }
+    }
+
+    // MARK: - Action Buttons
+
+    private var actionButtons: some View {
+        HStack(spacing: 6) {
+            // Other Tabs / viewing results toggle
+            if !tabService.results.isEmpty {
+                actionButton(
+                    icon: showingResults ? "music.note.list" : "list.bullet",
+                    active: showingResults,
+                    help: showingResults ? "Back to tab" : "Other tabs"
+                ) {
+                    showingResults.toggle()
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color.bgTertiary)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
 
-                if !manualQuery.isEmpty {
+            searchButton
+
+            // Font size controls
+            actionButton(icon: "textformat.size.smaller", active: false, help: "Smaller text") {
+                fontSize = max(fontSizeRange.lowerBound, fontSize - 1)
+            }
+            actionButton(icon: "textformat.size.larger", active: false, help: "Larger text") {
+                fontSize = min(fontSizeRange.upperBound, fontSize + 1)
+            }
+
+            // Word wrap
+            actionButton(
+                icon: "text.justify.leading",
+                active: wordWrap,
+                help: wordWrap ? "Wrap: ON" : "Wrap: OFF"
+            ) {
+                wordWrap.toggle()
+            }
+        }
+    }
+
+    private var searchButton: some View {
+        actionButton(
+            icon: "magnifyingglass",
+            active: showingSearch,
+            help: "Search"
+        ) {
+            showingSearch.toggle()
+            if showingSearch {
+                searchFieldFocused = true
+            }
+        }
+    }
+
+    private func actionButton(icon: String, active: Bool, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(active ? Color.accent : Color.textTertiary)
+                .frame(width: 26, height: 26)
+                .background(active ? Color.accent.opacity(0.12) : Color.bgTertiary)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    private var autoIndicator: some View {
+        Text("AUTO")
+            .font(.system(size: 8, weight: .heavy))
+            .tracking(0.5)
+            .foregroundStyle(Color.accent)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(Color.accent.opacity(0.12))
+            .clipShape(Capsule())
+    }
+
+    // MARK: - Search Field
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.textTertiary)
+
+                TextField("Search artist or song...", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.textPrimary)
+                    .focused($searchFieldFocused)
+                    .onSubmit {
+                        submitSearch()
+                    }
+
+                if !searchText.isEmpty {
                     Button {
-                        tabService.search(query: manualQuery)
+                        searchText = ""
                     } label: {
-                        Image(systemName: "arrow.right.circle.fill")
-                            .font(.system(size: 22))
-                            .foregroundStyle(Color.accent)
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.textTertiary)
                     }
                     .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Color.bgTertiary)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            if !searchText.isEmpty {
+                Button {
+                    submitSearch()
+                } label: {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(Color.accent)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func submitSearch() {
+        guard !searchText.isEmpty else { return }
+        autoFetch = false
+        showingResults = true
+        tabService.search(query: searchText, autoSelect: false)
+    }
+
+    // MARK: - Content Area
+
+    @ViewBuilder
+    private var contentArea: some View {
+        if showingResults && !tabService.results.isEmpty {
+            searchResultsList
+        } else if let tab = tabService.selectedTab {
+            tabContentArea(tab)
+        } else if tabService.isLoadingTab {
+            loadingView("Loading tab...")
+        } else if !tabService.results.isEmpty {
+            searchResultsList
+        } else if tabService.isSearching {
+            loadingView("Searching...")
+        } else {
+            emptyStateView
+        }
+    }
+
+    // MARK: - Tab Content
+
+    private func tabContentArea(_ tab: TabContent) -> some View {
+        Group {
+            if wordWrap {
+                ScrollView(.vertical) {
+                    tabText(tab.content)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
+                }
+            } else {
+                ScrollView([.horizontal, .vertical]) {
+                    tabText(tab.content)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .padding(16)
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .background(Color.bgSecondary)
+        .background(Color.bgPrimary)
+    }
+
+    private func tabText(_ content: String) -> some View {
+        Text(content)
+            .font(.system(size: fontSize, design: .monospaced))
+            .foregroundStyle(Color(white: 0.82))
+            .textSelection(.enabled)
     }
 
     // MARK: - Search Results List
@@ -180,7 +371,7 @@ struct ContentView: View {
     private var searchResultsList: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .lastTextBaseline) {
-                Text("RESULTS")
+                Text("OTHER TABS")
                     .font(.system(size: 10, weight: .heavy))
                     .tracking(1.2)
                     .foregroundStyle(Color.textTertiary)
@@ -207,97 +398,13 @@ struct ContentView: View {
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 tabService.loadTab(result)
+                                showingResults = false
                             }
                     }
                 }
             }
         }
-    }
-
-    // MARK: - Tab Content View
-
-    private func tabContentView(_ tab: TabContent) -> some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack(alignment: .center) {
-                Button {
-                    tabService.selectedTab = nil
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 11, weight: .bold))
-                        Text("Back")
-                            .font(.system(size: 12, weight: .semibold))
-                    }
-                    .foregroundStyle(Color.accent)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Color.accent.opacity(0.12))
-                    .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(tab.title)
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(Color.textPrimary)
-                        .lineLimit(1)
-
-                    HStack(spacing: 6) {
-                        Text(tab.artist)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Color.textSecondary)
-                        typeBadge(tab.type, small: true)
-                    }
-                }
-
-                // Word wrap toggle
-                Button {
-                    wordWrap.toggle()
-                } label: {
-                    Image(systemName: wordWrap ? "text.justify.leading" : "arrow.left.and.right.text.below.a.magnifyingglass")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(wordWrap ? Color.accent : Color.textTertiary)
-                        .frame(width: 28, height: 28)
-                        .background(wordWrap ? Color.accent.opacity(0.12) : Color.bgTertiary)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-                .buttonStyle(.plain)
-                .help(wordWrap ? "Word wrap: ON" : "Word wrap: OFF")
-                .padding(.leading, 8)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(Color.bgSecondary)
-
-            Color.divider.frame(height: 1)
-
-            // Tab content - scrollable both ways when wrap is off
-            if wordWrap {
-                ScrollView(.vertical) {
-                    Text(tab.content)
-                        .font(.custom("SF Mono", size: 12.5, relativeTo: .body))
-                        .foregroundStyle(Color(white: 0.82))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(16)
-                }
-                .background(Color.bgPrimary)
-            } else {
-                ScrollView([.horizontal, .vertical]) {
-                    Text(tab.content)
-                        .font(.custom("SF Mono", size: 12.5, relativeTo: .body))
-                        .foregroundStyle(Color(white: 0.82))
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .frame(minWidth: 0, alignment: .leading)
-                        .padding(16)
-                }
-                .background(Color.bgPrimary)
-            }
-        }
+        .background(Color.bgPrimary)
     }
 
     // MARK: - Helpers
@@ -357,14 +464,14 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private func typeBadge(_ type: String, small: Bool = false) -> some View {
+    private func typeBadge(_ type: String) -> some View {
         let color = badgeColor(for: type)
         Text(type.uppercased())
-            .font(.system(size: small ? 8 : 9, weight: .heavy))
+            .font(.system(size: 9, weight: .heavy))
             .tracking(0.5)
             .foregroundStyle(color)
-            .padding(.horizontal, small ? 5 : 7)
-            .padding(.vertical, small ? 2 : 3)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
             .background(color.opacity(0.15))
             .clipShape(RoundedRectangle(cornerRadius: 4))
     }
@@ -387,7 +494,6 @@ struct ResultRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Left: song info
             VStack(alignment: .leading, spacing: 3) {
                 Text(result.title)
                     .font(.system(size: 13, weight: .semibold))
@@ -401,7 +507,6 @@ struct ResultRow: View {
 
             Spacer()
 
-            // Right: badge + rating
             VStack(alignment: .trailing, spacing: 4) {
                 badgeView
 
