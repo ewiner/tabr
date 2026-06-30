@@ -13,7 +13,13 @@ let package = Package(
             dependencies: [
                 .product(name: "MediaRemoteAdapter", package: "mediaremote-adapter"),
             ],
-            path: "Sources/Tabr"
+            path: "Sources/Tabr",
+            linkerSettings: [
+                // Leave room in the Mach-O header so build.sh can rewrite the
+                // libMediaRemoteAdapter dependency into a (longer) framework path
+                // without a relink. See the framework repackaging in build.sh.
+                .unsafeFlags(["-Xlinker", "-headerpad_max_install_names"])
+            ]
         )
     ]
 )
