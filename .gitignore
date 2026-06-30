@@ -1,5 +1,7 @@
 .DS_Store
 .build/
+.idea/
+Tabr.app/
 .swiftpm/
 DerivedData/
 *.xcodeproj/

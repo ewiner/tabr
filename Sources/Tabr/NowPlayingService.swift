@@ -32,6 +32,14 @@ class NowPlayingService: ObservableObject {
             self?.handleTrackInfo(trackInfo)
         }
 
+        // If the underlying listener process dies unexpectedly, restart it so we
+        // don't silently stop receiving Now Playing updates. Guarded by
+        // isMonitoring so an intentional stopMonitoring() doesn't trigger a restart.
+        mediaController.onListenerTerminated = { [weak self] in
+            guard let self, self.isMonitoring else { return }
+            self.mediaController.startListening()
+        }
+
         mediaController.startListening()
 
         // One-shot get to pick up whatever is already playing.
