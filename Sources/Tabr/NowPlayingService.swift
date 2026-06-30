@@ -60,8 +60,12 @@ class NowPlayingService: ObservableObject {
             return
         }
 
-        let artist = payload.artist ?? ""
-        let info = NowPlayingInfo(title: title, artist: artist)
+        // Browser sources (e.g. YouTube Music) deliver HTML-encoded metadata, so
+        // "Chance Peña" arrives as "Chance Pe&ntilde;a" — decode before display/search.
+        let info = NowPlayingInfo(
+            title: title.decodingHTMLEntities(),
+            artist: (payload.artist ?? "").decodingHTMLEntities()
+        )
         if nowPlaying != info {
             nowPlaying = info
         }

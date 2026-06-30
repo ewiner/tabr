@@ -393,67 +393,8 @@ class TabSearchService: ObservableObject {
 
     // MARK: - HTML Entity Decoding
 
-    /// Comprehensive HTML entity decoder — handles named entities and numeric (decimal + hex)
+    /// HTML entity decoder — see `String.decodingHTMLEntities()`.
     static func decodeHTMLEntities(_ string: String) -> String {
-        var result = string
-        // Named entities
-        let namedEntities: [(String, String)] = [
-            ("&quot;", "\""),
-            ("&amp;", "&"),
-            ("&apos;", "'"),
-            ("&#x27;", "'"),
-            ("&#039;", "'"),
-            ("&lt;", "<"),
-            ("&gt;", ">"),
-            ("&nbsp;", " "),
-            ("&ndash;", "\u{2013}"),
-            ("&mdash;", "\u{2014}"),
-            ("&lsquo;", "\u{2018}"),
-            ("&rsquo;", "\u{2019}"),
-            ("&ldquo;", "\u{201C}"),
-            ("&rdquo;", "\u{201D}"),
-            ("&hellip;", "\u{2026}"),
-        ]
-        // Decode &amp; last to avoid double-decoding, but process it in order
-        // Actually, decode &amp; first so that &amp;quot; doesn't become &quot; then "
-        // No — decode &amp; last: if the source has &amp;quot; it should become &quot; (literal), not "
-        // The safe order: decode specific entities first, then &amp; last
-        for (entity, replacement) in namedEntities where entity != "&amp;" {
-            result = result.replacingOccurrences(of: entity, with: replacement)
-        }
-
-        // Decode decimal numeric entities: &#NNN;
-        if let regex = try? NSRegularExpression(pattern: "&#(\\d+);", options: []) {
-            let nsString = result as NSString
-            let matches = regex.matches(in: result, range: NSRange(location: 0, length: nsString.length))
-            // Process in reverse to preserve indices
-            for match in matches.reversed() {
-                if let range = Range(match.range(at: 1), in: result),
-                   let codePoint = UInt32(result[range]),
-                   let scalar = Unicode.Scalar(codePoint) {
-                    let fullRange = Range(match.range, in: result)!
-                    result.replaceSubrange(fullRange, with: String(Character(scalar)))
-                }
-            }
-        }
-
-        // Decode hex numeric entities: &#xHH;
-        if let regex = try? NSRegularExpression(pattern: "&#x([0-9a-fA-F]+);", options: []) {
-            let nsString = result as NSString
-            let matches = regex.matches(in: result, range: NSRange(location: 0, length: nsString.length))
-            for match in matches.reversed() {
-                if let range = Range(match.range(at: 1), in: result),
-                   let codePoint = UInt32(result[range], radix: 16),
-                   let scalar = Unicode.Scalar(codePoint) {
-                    let fullRange = Range(match.range, in: result)!
-                    result.replaceSubrange(fullRange, with: String(Character(scalar)))
-                }
-            }
-        }
-
-        // Decode &amp; last
-        result = result.replacingOccurrences(of: "&amp;", with: "&")
-
-        return result
+        string.decodingHTMLEntities()
     }
 }
