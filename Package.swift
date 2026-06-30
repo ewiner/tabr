@@ -6,12 +6,14 @@ let package = Package(
     platforms: [.macOS(.v26)],
     dependencies: [
         .package(url: "https://github.com/ejbills/mediaremote-adapter.git", branch: "master"),
+        .package(url: "https://github.com/Kitura/swift-html-entities.git", from: "4.0.0"),
     ],
     targets: [
         .executableTarget(
             name: "Tabr",
             dependencies: [
                 .product(name: "MediaRemoteAdapter", package: "mediaremote-adapter"),
+                .product(name: "HTMLEntities", package: "swift-html-entities"),
             ],
             path: "Sources/Tabr",
             linkerSettings: [

@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import MediaRemoteAdapter
+import HTMLEntities
 
 struct NowPlayingInfo: Equatable {
     let title: String
@@ -63,8 +64,8 @@ class NowPlayingService: ObservableObject {
         // Browser sources (e.g. YouTube Music) deliver HTML-encoded metadata, so
         // "Chance Peña" arrives as "Chance Pe&ntilde;a" — decode before display/search.
         let info = NowPlayingInfo(
-            title: title.decodingHTMLEntities(),
-            artist: (payload.artist ?? "").decodingHTMLEntities()
+            title: title.htmlUnescape(),
+            artist: (payload.artist ?? "").htmlUnescape()
         )
         if nowPlaying != info {
             nowPlaying = info

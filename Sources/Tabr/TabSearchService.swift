@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import HTMLEntities
 
 struct TabResult: Identifiable, Equatable {
     let id = UUID()
@@ -193,7 +194,7 @@ class TabSearchService: ObservableObject {
         }
 
         let encodedJSON = String(afterStore[..<endQuote])
-        let decodedJSON = Self.decodeHTMLEntities(encodedJSON)
+        let decodedJSON = encodedJSON.htmlUnescape()
 
         guard let jsonData = decodedJSON.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
@@ -223,7 +224,7 @@ class TabSearchService: ObservableObject {
         }
 
         let arrayStr = "[\(html[startBracket.upperBound..<html.index(before: idx)])]"
-        let decoded = Self.decodeHTMLEntities(arrayStr)
+        let decoded = arrayStr.htmlUnescape()
 
         guard let data = decoded.data(using: .utf8),
               let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
@@ -253,13 +254,13 @@ class TabSearchService: ObservableObject {
             }
 
             let relevance = relevanceScore(
-                resultTitle: Self.decodeHTMLEntities(title),
-                resultArtist: Self.decodeHTMLEntities(artist)
+                resultTitle: title.htmlUnescape(),
+                resultArtist: artist.htmlUnescape()
             )
 
             return TabResult(
-                title: Self.decodeHTMLEntities(title),
-                artist: Self.decodeHTMLEntities(artist),
+                title: title.htmlUnescape(),
+                artist: artist.htmlUnescape(),
                 rating: rating,
                 votes: votes,
                 type: type,
@@ -315,7 +316,7 @@ class TabSearchService: ObservableObject {
         }
 
         let encoded = String(afterStore[..<endQuote])
-        let decoded = Self.decodeHTMLEntities(encoded)
+        let decoded = encoded.htmlUnescape()
 
         guard let jsonData = decoded.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
@@ -387,14 +388,7 @@ class TabSearchService: ObservableObject {
             .replacingOccurrences(of: "<br />", with: "\n")
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
-        text = Self.decodeHTMLEntities(text)
+        text = text.htmlUnescape()
         return text
-    }
-
-    // MARK: - HTML Entity Decoding
-
-    /// HTML entity decoder — see `String.decodingHTMLEntities()`.
-    static func decodeHTMLEntities(_ string: String) -> String {
-        string.decodingHTMLEntities()
     }
 }
